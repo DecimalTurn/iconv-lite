@@ -31,13 +31,16 @@ exports._sbcs = class SBCSCodec {
     this.decodeBuf = decodeBuf
 
     // Encoding buffer.
-    const encodeBuf = iconv.backend.allocBytes(65536, iconv.defaultCharSingleByte.charCodeAt(0))
+    const defaultCharByte = iconv.defaultCharSingleByte.charCodeAt(0)
+    const encodeBuf = iconv.backend.allocBytes(65536, defaultCharByte)
 
     for (let i = 0; i < codecOptions.chars.length; i++) {
       encodeBuf[codecOptions.chars.charCodeAt(i)] = i
     }
 
     this.encodeBuf = encodeBuf
+    this.defaultCharByte = defaultCharByte
+    this.defaultCharCode = codecOptions.chars.charCodeAt(defaultCharByte)
   }
 
   get encoder () { return SBCSEncoder }
@@ -48,13 +51,40 @@ class SBCSEncoder {
   constructor (opts, codec, backend) {
     this.backend = backend
     this.encodeBuf = codec.encodeBuf
+    this.invalidCharHandler = opts && opts.invalidCharHandler
+    this.defaultCharByte = codec.defaultCharByte
+    this.defaultCharCode = codec.defaultCharCode
   }
 
   write (str) {
     const bytes = this.backend.allocBytes(str.length)
+    const encodeBuf = this.encodeBuf
+    const invalidCharHandler = this.invalidCharHandler
 
-    for (let i = 0; i < str.length; i++)
-    { bytes[i] = this.encodeBuf[str.charCodeAt(i)] }
+    if (typeof invalidCharHandler === "function") {
+      const defaultCharByte = this.defaultCharByte
+      const defaultCharCode = this.defaultCharCode
+
+      for (let i = 0; i < str.length; i++) {
+        const charCode = str.charCodeAt(i)
+        const encodedByte = encodeBuf[charCode]
+
+        // `encodeBuf` uses the default byte for unmappable chars. Allow the
+        // codec character that genuinely maps to that byte.
+        if (encodedByte !== defaultCharByte || charCode === defaultCharCode) {
+          bytes[i] = encodedByte
+          continue
+        }
+
+        if (invalidCharHandler(str.charAt(i), i) === true) {
+          return null
+        }
+        bytes[i] = encodedByte
+      }
+    } else {
+      for (let i = 0; i < str.length; i++)
+      { bytes[i] = encodeBuf[str.charCodeAt(i)] }
+    }
 
     return this.backend.bytesToResult(bytes, bytes.length)
   }
