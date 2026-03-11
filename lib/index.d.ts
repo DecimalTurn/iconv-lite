@@ -30,10 +30,20 @@ export interface EncodeOptions {
   addBOM?: boolean;
   /** Override the default endianness for `UTF-32` encoding. */
   defaultEncoding?: "utf32be";
+  /**
+   * Called when encoding a character that cannot be represented in the target encoding.
+   * Return `true` to stop encoding early and make `iconv.encode()` return `null`.
+   *
+   * Currently used by single-byte encoders only.
+   *
+   * @param char - The unencodable character.
+   * @param index - The position of the character in the input string.
+   */
+  invalidCharHandler?: (char: string, index: number) => boolean | void;
 }
 
 export interface EncoderStream<Bytes extends Uint8Array = Buffer> {
-  write(str: string): Bytes;
+  write(str: string): Bytes | null;
   end(): Bytes | undefined;
 }
 
@@ -62,7 +72,7 @@ export interface Backend<Bytes extends Uint8Array = Uint8Array> {
 
 export interface Iconv<Bytes extends Uint8Array = Buffer> {
   /** Encodes a `string` into backend bytes, using the provided `encoding`. */
-  encode (content: string, encoding: Encoding, options?: EncodeOptions): Bytes
+  encode (content: string, encoding: Encoding, options?: EncodeOptions): Bytes | null
 
   /** Decodes a `Buffer` into a `string`, using the provided `encoding`. */
   decode (buffer: Buffer | Uint8Array, encoding: Encoding, options?: DecodeOptions): string
