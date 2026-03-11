@@ -33,6 +33,7 @@ function SBCSCodec (codecOptions, iconv) {
   }
 
   this.encodeBuf = encodeBuf
+  this.codecChars = codecOptions.chars // Keep chars for lazy isEncodeable construction
 }
 
 SBCSCodec.prototype.encoder = SBCSEncoder
@@ -40,12 +41,59 @@ SBCSCodec.prototype.decoder = SBCSDecoder
 
 function SBCSEncoder (options, codec) {
   this.encodeBuf = codec.encodeBuf
+  this.invalidCharHandler = options && options.invalidCharHandler
+
+  // Lazily build isEncodeable lookup only if handler is provided
+  this.isEncodeable = null
+  if (typeof this.invalidCharHandler === "function") {
+    this.codecChars = codec.codecChars
+  }
 }
 
 SBCSEncoder.prototype.write = function (str) {
   var buf = Buffer.alloc(str.length)
+
+  var encodeBuf = this.encodeBuf
+  var invalidCharHandler = this.invalidCharHandler
+
+  if (typeof invalidCharHandler === "function") {
+    return encodeWithInvalidCharHandler(this, str, buf, encodeBuf, invalidCharHandler)
+  }
+
   for (var i = 0; i < str.length; i++) {
-    buf[i] = this.encodeBuf[str.charCodeAt(i)]
+    buf[i] = encodeBuf[str.charCodeAt(i)]
+  }
+
+  return buf
+}
+
+function encodeWithInvalidCharHandler (encoder, str, buf, encodeBuf, invalidCharHandler) {
+  // Handler path: build isEncodeable lookup on first use
+  var isEncodeable = encoder.isEncodeable
+  if (!isEncodeable) {
+    isEncodeable = encoder.isEncodeable = Buffer.alloc(65536, 0)
+    var codecChars = encoder.codecChars
+    for (var j = 0; j < codecChars.length; j++) {
+      isEncodeable[codecChars.charCodeAt(j)] = 1
+    }
+  }
+
+  for (var i = 0; i < str.length; i++) {
+    var charCode = str.charCodeAt(i)
+
+    if (isEncodeable[charCode]) {
+      buf[i] = encodeBuf[charCode]
+      continue
+    }
+
+    var shouldCancel = invalidCharHandler(str.charAt(i), i)
+    buf[i] = encodeBuf[charCode]
+
+    // Only a strict `true` cancels the rest of the encoding process; other return values are ignored.
+    // This could eventually allow the handler to return a replacement character (e.g. 'e' instead of 'é').
+    if (shouldCancel === true) {
+      return (i + 1 < buf.length) ? buf.slice(0, i + 1) : buf
+    }
   }
 
   return buf

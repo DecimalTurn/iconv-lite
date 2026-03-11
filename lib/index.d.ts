@@ -31,6 +31,16 @@ declare namespace iconv {
     addBOM?: boolean;
     /** Override the default endianness for `UTF-32` encoding. */
     defaultEncoding?: "utf32be";
+    /**
+     * Called when encoding a character that cannot be represented in the target encoding.
+     * Return `true` to stop encoding early after encountering the first unencodable character, or return `void` to continue encoding with the default replacement character.
+     *
+     * Currently used by single-byte encoders only.
+     *
+     * @param char - The unencodable character.
+     * @param index - The position of the character in the input string.
+     */
+    invalidCharHandler?: (char: string, index: number) => boolean | void;
   }
 
   export interface EncoderStream {
