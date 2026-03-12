@@ -63,7 +63,7 @@ describe("invalidCharHandler (SBCS)", function () {
       }
     })
 
-    assert.strictEqual(res.toString("binary"), "A?")
+    assert.strictEqual(res, null)
     assert.strictEqual(calls.length, 1)
     assert.strictEqual(calls[0].char, "世")
     assert.strictEqual(calls[0].index, 1)

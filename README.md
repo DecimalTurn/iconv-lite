@@ -41,6 +41,7 @@ buf = iconv.encode("Hello 世界", 'latin1', {
         return true;
     }
 });
+// => null
 
 // Check if encoding is supported
 iconv.encodingExists("us-ascii")
@@ -124,7 +125,7 @@ This library supports UTF-32LE, UTF-32BE and UTF-32 encodings. Like the UTF-16 e
 ## Other notes
 
 When decoding, be sure to supply a Buffer to decode() method, otherwise [bad things usually happen](https://github.com/ashtuchkin/iconv-lite/wiki/Use-Buffers-when-decoding).  
-Untranslatable characters are set to � or ?. For single-byte encoding, `invalidCharHandler` can be used to observe unsupported characters and warn or throw. You can also stop early by returning `true` from the handler. No transliteration is currently supported.  
+Untranslatable characters are set to � or ?. For single-byte encoding, `invalidCharHandler` can be used to observe unsupported characters and warn or throw. You can also stop early by returning `true` from the handler, in which case `encode()` returns `null`. No transliteration is currently supported.  
 Node versions 0.10.31 and 0.11.13 are buggy, don't use them (see [#65](https://github.com/ashtuchkin/iconv-lite/issues/65), [#77](https://github.com/ashtuchkin/iconv-lite/issues/77)).  
 
 ## Testing

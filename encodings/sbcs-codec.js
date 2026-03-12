@@ -80,14 +80,10 @@ function encodeWithInvalidCharHandler (encoder, str, buf, encodeBuf, invalidChar
       continue
     }
 
-    var shouldCancel = invalidCharHandler(str.charAt(i), i)
-    buf[i] = encodedByte
-
-    // Only a strict `true` cancels the rest of the encoding process; other return values are ignored.
-    // This could eventually allow the handler to return a replacement character (e.g. 'e' instead of 'é').
-    if (shouldCancel === true) {
-      return (i + 1 < buf.length) ? buf.slice(0, i + 1) : buf
+    if (invalidCharHandler(str.charAt(i), i) === true) {
+      return null
     }
+    buf[i] = encodedByte
   }
 
   return buf
