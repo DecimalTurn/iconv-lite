@@ -26,14 +26,16 @@ function SBCSCodec (codecOptions, iconv) {
   this.decodeBuf = Buffer.from(codecOptions.chars, "ucs2")
 
   // Encoding buffer.
-  var encodeBuf = Buffer.alloc(65536, iconv.defaultCharSingleByte.charCodeAt(0))
+  var defaultCharByte = iconv.defaultCharSingleByte.charCodeAt(0)
+  var encodeBuf = Buffer.alloc(65536, defaultCharByte)
 
   for (var i = 0; i < codecOptions.chars.length; i++) {
     encodeBuf[codecOptions.chars.charCodeAt(i)] = i
   }
 
   this.encodeBuf = encodeBuf
-  this.codecChars = codecOptions.chars // Keep chars for lazy isEncodeable construction
+  this.defaultCharByte = defaultCharByte
+  this.defaultCharCode = codecOptions.chars.charCodeAt(defaultCharByte)
 }
 
 SBCSCodec.prototype.encoder = SBCSEncoder
@@ -42,12 +44,8 @@ SBCSCodec.prototype.decoder = SBCSDecoder
 function SBCSEncoder (options, codec) {
   this.encodeBuf = codec.encodeBuf
   this.invalidCharHandler = options && options.invalidCharHandler
-
-  // Lazily build isEncodeable lookup only if handler is provided
-  this.isEncodeable = null
-  if (typeof this.invalidCharHandler === "function") {
-    this.codecChars = codec.codecChars
-  }
+  this.defaultCharByte = codec.defaultCharByte
+  this.defaultCharCode = codec.defaultCharCode
 }
 
 SBCSEncoder.prototype.write = function (str) {
@@ -68,26 +66,22 @@ SBCSEncoder.prototype.write = function (str) {
 }
 
 function encodeWithInvalidCharHandler (encoder, str, buf, encodeBuf, invalidCharHandler) {
-  // Handler path: build isEncodeable lookup on first use
-  var isEncodeable = encoder.isEncodeable
-  if (!isEncodeable) {
-    isEncodeable = encoder.isEncodeable = Buffer.alloc(65536, 0)
-    var codecChars = encoder.codecChars
-    for (var j = 0; j < codecChars.length; j++) {
-      isEncodeable[codecChars.charCodeAt(j)] = 1
-    }
-  }
+  var defaultCharByte = encoder.defaultCharByte
+  var defaultCharCode = encoder.defaultCharCode
 
   for (var i = 0; i < str.length; i++) {
     var charCode = str.charCodeAt(i)
+    var encodedByte = encodeBuf[charCode]
 
-    if (isEncodeable[charCode]) {
-      buf[i] = encodeBuf[charCode]
+    // `encodeBuf` uses default byte for unmappable chars. Disambiguate by
+    // allowing the codec character that genuinely maps to that default byte.
+    if (encodedByte !== defaultCharByte || charCode === defaultCharCode) {
+      buf[i] = encodedByte
       continue
     }
 
     var shouldCancel = invalidCharHandler(str.charAt(i), i)
-    buf[i] = encodeBuf[charCode]
+    buf[i] = encodedByte
 
     // Only a strict `true` cancels the rest of the encoding process; other return values are ignored.
     // This could eventually allow the handler to return a replacement character (e.g. 'e' instead of 'é').
