@@ -78,6 +78,20 @@ class SBCSEncoder {
           continue
         }
 
+        // Report a surrogate pair together rather than as two invalid code units.
+        if (charCode >= 0xD800 && charCode <= 0xDBFF && i + 1 < str.length) {
+          const nextCharCode = str.charCodeAt(i + 1)
+          if (nextCharCode >= 0xDC00 && nextCharCode <= 0xDFFF) {
+            if (invalidCharHandler(str.slice(i, i + 2), i) === true) {
+              return null
+            }
+            bytes[i] = encodedByte
+            bytes[i + 1] = encodeBuf[nextCharCode]
+            i++
+            continue
+          }
+        }
+
         if (invalidCharHandler(str.charAt(i), i) === true) {
           return null
         }
