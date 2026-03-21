@@ -64,6 +64,7 @@ class SBCSEncoder {
     if (typeof invalidCharHandler === "function") {
       const defaultCharByte = this.defaultCharByte
       const defaultCharCode = this.defaultCharCode
+      let codePointIndex = 0
 
       for (let i = 0; i < str.length; i++) {
         const charCode = str.charCodeAt(i)
@@ -73,6 +74,7 @@ class SBCSEncoder {
         // codec character that genuinely maps to that byte.
         if (encodedByte !== defaultCharByte || charCode === defaultCharCode) {
           bytes[i] = encodedByte
+          codePointIndex++
           continue
         }
 
@@ -80,20 +82,22 @@ class SBCSEncoder {
         if (charCode >= 0xD800 && charCode <= 0xDBFF && i + 1 < str.length) {
           const nextCharCode = str.charCodeAt(i + 1)
           if (nextCharCode >= 0xDC00 && nextCharCode <= 0xDFFF) {
-            if (invalidCharHandler(str.slice(i, i + 2), i) === true) {
+            if (invalidCharHandler(str.slice(i, i + 2), codePointIndex) === true) {
               return null
             }
             bytes[i] = encodedByte
             bytes[i + 1] = encodeBuf[nextCharCode]
             i++
+            codePointIndex++
             continue
           }
         }
 
-        if (invalidCharHandler(str.charAt(i), i) === true) {
+        if (invalidCharHandler(str.charAt(i), codePointIndex) === true) {
           return null
         }
         bytes[i] = encodedByte
+        codePointIndex++
       }
     } else {
       for (let i = 0; i < str.length; i++)
