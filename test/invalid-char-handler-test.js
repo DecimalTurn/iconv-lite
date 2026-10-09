@@ -101,6 +101,57 @@ describe("invalidCharHandler (SBCS)", function () {
     // We don't call the handler for "界" because we stopped encoding after "世".
   })
 
+  it("allows a handler to append a fallback before continuing", function () {
+    var calls = []
+    var output = []
+    var replacements = {
+      "🙂": ":)"
+    }
+    var encoder = iconv.getEncoder("latin1", {
+      invalidCharHandler: function (char, index) {
+        calls.push({ char: char, index: index })
+        var replacement = replacements[char]
+        assert.notStrictEqual(replacement, undefined)
+        output.push(iconv.encode(replacement, "latin1"))
+        return true
+      }
+    })
+
+    output.push(encoder.write("Hello "))
+    assert.strictEqual(encoder.write("🙂"), null)
+    output.push(encoder.write(" world"))
+
+    assert.strictEqual(Buffer.concat(output).toString("binary"), "Hello :) world")
+    assert.strictEqual(calls.length, 1)
+    assert.strictEqual(calls[0].char, "🙂")
+    assert.strictEqual(calls[0].index, 0)
+    assert.strictEqual(encoder.end(), undefined)
+  })
+
+  it("continues encoding after handler stops a stream chunk", function (done) {
+    var calls = []
+    var chunks = []
+    var stream = iconv.encodeStream("latin1", {
+      invalidCharHandler: function (char, index) {
+        calls.push({ char: char, index: index })
+        return true
+      }
+    })
+
+    stream.on("data", function (chunk) { chunks.push(chunk) })
+    stream.on("end", function () {
+      try {
+        assert.strictEqual(Buffer.concat(chunks).toString("binary"), "B")
+        assert.strictEqual(calls.length, 1)
+        done()
+      } catch (e) {
+        done(e)
+      }
+    })
+    stream.write("A世")
+    stream.end("B")
+  })
+
   it("keeps default replacement when handler returns a value", function () {
     var res = iconv.encode("世", "latin1", {
       invalidCharHandler: function () {
