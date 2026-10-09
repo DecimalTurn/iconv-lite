@@ -69,7 +69,7 @@ describe("invalidCharHandler (SBCS)", function () {
     })
   })
 
-  it("reports index as UTF-16 character position", function () {
+  it("reports index as Unicode code-point position", function () {
     var calls = []
     var res = iconv.encode("A🙂世B", "latin1", {
       invalidCharHandler: function (char, index) {
