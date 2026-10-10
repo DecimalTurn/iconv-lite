@@ -29,7 +29,14 @@ export const _sbcs = class SBCSCodec {
     this.decodeBuf = decodeBuf
 
     // Encoding buffer.
-    const defaultCharByte = iconv.defaultCharSingleByte.charCodeAt(0)
+    const defaultCharSingleByte = iconv.defaultCharSingleByte
+    const defaultCharByte = typeof defaultCharSingleByte === "string" &&
+      defaultCharSingleByte.length === 1
+      ? defaultCharSingleByte.charCodeAt(0)
+      : NaN
+    if (defaultCharByte > 0xFF || Number.isNaN(defaultCharByte)) {
+      throw new TypeError("defaultCharSingleByte must be a single-byte character")
+    }
     const encodeBuf = iconv.backend.allocBytes(65536, defaultCharByte)
 
     for (let i = 0; i < codecOptions.chars.length; i++) {
