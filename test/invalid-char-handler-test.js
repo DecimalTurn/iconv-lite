@@ -29,6 +29,32 @@ describe("invalidCharHandler (SBCS)", function () {
     assert.strictEqual(res.toString("binary"), "?A")
   })
 
+  it("rejects a non-single-byte defaultCharSingleByte for SBCS", function () {
+    var encoding = "iso88591"
+    var originalDefaultCharSingleByte = iconv.defaultCharSingleByte
+    var codecKey = iconv._canonicalizeEncoding(encoding)
+    var cachedCodec = iconv._codecDataCache[codecKey]
+    delete iconv._codecDataCache[codecKey]
+
+    try {
+      iconv.defaultCharSingleByte = "�"
+      assert.throws(function () {
+        iconv.getCodec(encoding)
+      }, function (err) {
+        assert.strictEqual(err.name, "TypeError")
+        assert.strictEqual(err.message, "defaultCharSingleByte must be a single-byte character")
+        return true
+      })
+    } finally {
+      iconv.defaultCharSingleByte = originalDefaultCharSingleByte
+      if (cachedCodec) {
+        iconv._codecDataCache[codecKey] = cachedCodec
+      } else {
+        delete iconv._codecDataCache[codecKey]
+      }
+    }
+  })
+
   it("propagates thrown errors", function () {
     assert.throws(function () {
       iconv.encode("世", "latin1", {
