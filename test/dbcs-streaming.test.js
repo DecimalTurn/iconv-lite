@@ -27,6 +27,25 @@ describe("DBCS streaming #node-web", function () {
     })
   }
 
+  const chunkedEncodeCases = [
+    ["big5", ["Ê", "中", "ABC"], "88 66 a4 a4 41 42 43", "Ê中ABC"],
+    ["big5", ["ê", "中"], "88 a7 a4 a4", "ê中"],
+    ["gb18030", ["\uD884", "\uC240"], "3f 83 32 93 31", "?\uC240"]
+  ]
+
+  for (const [encoding, inputs, expected, decoded] of chunkedEncodeCases) {
+    it(`preserves ${encoding} encoder output across chunks ${JSON.stringify(inputs)}`, function () {
+      const encoder = iconv.getEncoder(encoding)
+      const chunks = inputs.map(input => encoder.write(input))
+      const tail = encoder.end()
+      if (tail) chunks.push(tail)
+      const output = utils.concatBufs(chunks)
+      assert.strictEqual(utils.hex(output), expected)
+      assert.strictEqual(iconv.decode(output, encoding), decoded)
+      assert.strictEqual(encoder.end(), undefined)
+    })
+  }
+
   const decodeCases = [
     ["big5", "88 62", "Ê\u0304"],
     ["big5", "88 a5", "ê\u030C"],
