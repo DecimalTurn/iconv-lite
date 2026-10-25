@@ -2,6 +2,7 @@
 import "../cyrillic.test.js"
 import "../dbcs-backends.test.js"
 import "../dbcs-streaming.test.js"
+import "../gb18030.test.js"
 import "../greek.test.js"
 import "../internal.test.js"
 import "../sbcs.test.js"

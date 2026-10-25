@@ -4,6 +4,8 @@
 iconv-lite with native iconv and TextDecoder. It runs the Node backend first, then
 the Web backend, with separate reports. Both include small and large inputs, six
 DBCS families, ASCII through GBK, and Big5/GB18030 decoding one byte per chunk.
+GB18030 cases also cover four-byte BMP and supplementary characters, unassigned
+pointers and pointers beyond the Unicode limit.
 
 To run both backends against an earlier checkout:
 

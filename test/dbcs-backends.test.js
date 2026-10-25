@@ -46,8 +46,7 @@ describe("DBCS backends #node-web", function () {
     })
   }
 
-  it("preserves legacy GB18030 output for out-of-range pointers on both backends", function () {
-    // Unicode validation is separate from changing the codec's allocation backend.
-    assert.strictEqual(iconv.decode(utils.bytes("fe 39 fe 39"), "gb18030"), "\uDD55\uDF47")
+  it("replaces out-of-range GB18030 pointers on both backends", function () {
+    assert.strictEqual(iconv.decode(utils.bytes("fe 39 fe 39"), "gb18030"), "�")
   })
 })

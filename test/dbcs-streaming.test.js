@@ -84,3 +84,22 @@ describe("DBCS streaming #node-web", function () {
     })
   }
 })
+
+describe("DBCS exhaustive two-byte chunk boundaries #node-web", function () {
+  this.timeout(30000)
+  for (const encoding of ["shiftjis", "eucjp", "cp936", "gbk", "gb18030", "cp949", "cp950", "big5hkscs"]) {
+    it(`decodes ${encoding} identically when split`, function () {
+      const bytes = utils.bytes([0, 0])
+      for (let b1 = 0x81; b1 <= 0xFE; b1++) {
+        bytes[0] = b1
+        for (let b2 = 0x21; b2 <= 0xFE; b2++) {
+          bytes[1] = b2
+          const whole = iconv.decode(bytes, encoding)
+          const decoder = iconv.getDecoder(encoding)
+          const split = decoder.write(bytes.subarray(0, 1)) + decoder.write(bytes.subarray(1)) + decoder.end()
+          if (split !== whole) assert.fail(`${utils.hex(bytes)}: whole ${utils.strToHex(whole)}, split ${utils.strToHex(split)}`)
+        }
+      }
+    })
+  }
+})

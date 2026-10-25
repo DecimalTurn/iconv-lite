@@ -22,6 +22,10 @@
 
 ### 🐞 Bug fixes
 
+- Reject unassigned GB18030 four-byte pointers - by [@binggao1230](https://github.com/binggao1230) and [@bjohansebas](https://github.com/bjohansebas) in [#417](https://github.com/pillarjs/iconv-lite/pull/417)
+
+    Unassigned pointers now emit the configured replacement character instead of unrelated characters or unpaired surrogates. Supplementary characters decode directly without a range search. Exhaustive pointer and chunk-boundary tests run with both backends and in browsers.
+
 - Preserve DBCS output across chunk boundaries - by [@bjohansebas](https://github.com/bjohansebas)
 
     Streaming encoders and decoders reserve space for pending input as well as the new chunk. This prevents truncated output when completing surrogate pairs, Big5 combining sequences, or reprocessing malformed multibyte input.

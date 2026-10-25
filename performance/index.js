@@ -12,6 +12,8 @@ const encodingStrings = {
   gbk: "这是中文字符测试。。！@￥%12",
   "gbk-ascii": "This is a test string 32 chars..",
   gb18030: "这是中文字符测试😱𠕇abc12",
+  "gb18030-bmp4": "\u0080\u0081\u0082\u0083",
+  "gb18030-supplementary": "😱𠕇😀𠀀",
   big5hkscs: "中文測試Ê\u0304𠕇abc12",
   shift_jis: "日本語の文字列テストabc12",
   eucjp: "日本語の文字列テスト˘abc12",
@@ -51,7 +53,7 @@ async function main () {
     })
 
     for (const [label, baseString] of Object.entries(encodingStrings)) {
-      const encoding = label === "gbk-ascii" ? "gbk" : label
+      const encoding = label === "gbk-ascii" ? "gbk" : label.startsWith("gb18030-") ? "gb18030" : label
       for (const [size, repeat] of Object.entries(sizes)) {
         const string = baseString.repeat(repeat)
 
@@ -83,6 +85,24 @@ async function main () {
             timer.end()
           })
         }
+      }
+    }
+
+    // Invalid GB18030 pointers must be rejected as complete four-byte sequences.
+    for (const [label, bytes] of [
+      ["gb18030-gap", [0x84, 0x31, 0xa5, 0x30]],
+      ["gb18030-out-of-range", [0xe3, 0x32, 0x9a, 0x36]]
+    ]) {
+      for (const [size, repeat] of Object.entries(sizes)) {
+        const buffer = new Uint8Array(bytes.length * repeat)
+        for (let i = 0; i < repeat; i++) buffer.set(bytes, i * bytes.length)
+        if (iconvLite.decode(buffer, "gb18030") !== "�".repeat(repeat)) {
+          console.error(`Skipping ${label}/${size}/decode: incorrect output`)
+          continue
+        }
+        suite.add(`${label}/${size}/decode/iconv-lite`, function () {
+          iconvLite.decode(buffer, "gb18030")
+        })
       }
     }
 
