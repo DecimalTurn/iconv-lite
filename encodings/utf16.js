@@ -113,10 +113,8 @@ class Utf16EndianDecoder {
 
 class Utf16Codec {
   createEncoder (options, iconv) {
-    options = options || {}
-    if (options.addBOM === undefined)
-    { options.addBOM = true }
-    return iconv.getEncoder("utf-16le", options)
+    const { addBOM = true } = options || {}
+    return iconv.getEncoder("utf-16le", { ...options, addBOM })
   }
 
   createDecoder (options, iconv) {
