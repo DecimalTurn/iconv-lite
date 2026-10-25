@@ -14,6 +14,10 @@
 
 ### 🐞 Bug fixes
 
+- Use the default byte when encoding U+FFFD in SBCS - by [@mamicicekel](https://github.com/mamicicekel) in [#424](https://github.com/pillarjs/iconv-lite/pull/424)
+
+    Single-byte encoders now consistently encode `U+FFFD` using `defaultCharSingleByte` (`?` by default), instead of mapping it to an unassigned byte from the decoding table.
+
 - Preserve caller options in UTF-16 and UTF-32 auto encoders - by [@KennyMcSimpson](https://github.com/KennyMcSimpson) and [@bjohansebas](https://github.com/bjohansebas) in [#427](https://github.com/pillarjs/iconv-lite/pull/427)
 
     The automatic UTF-16 and UTF-32 encoders no longer modify the caller's options or throw when those options are frozen. Reusing the options for another encoding no longer adds an unexpected BOM. Explicit and inherited `addBOM` values, and UTF-32's `defaultEncoding`, remain respected.

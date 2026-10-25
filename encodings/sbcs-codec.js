@@ -34,7 +34,11 @@ exports._sbcs = class SBCSCodec {
     const encodeBuf = iconv.backend.allocBytes(65536, iconv.defaultCharSingleByte.charCodeAt(0))
 
     for (let i = 0; i < codecOptions.chars.length; i++) {
-      encodeBuf[codecOptions.chars.charCodeAt(i)] = i
+      const code = codecOptions.chars.charCodeAt(i)
+      // U+FFFD marks unassigned bytes in decode tables, not an encodable character.
+      // Keep defaultCharSingleByte for it instead of mapping it to an unassigned byte.
+      if (code === 0xFFFD) continue
+      encodeBuf[code] = i
     }
 
     this.encodeBuf = encodeBuf
