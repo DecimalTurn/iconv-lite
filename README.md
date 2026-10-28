@@ -164,7 +164,12 @@ It is not recommended for large or bulk text, where the native `utf8`/`utf16` en
 ## Other notes
 
 When decoding, be sure to supply a Buffer to decode() method, otherwise [bad things usually happen](https://github.com/ashtuchkin/iconv-lite/wiki/Use-Buffers-when-decoding).  
-Untranslatable characters are set to � or ?. For single-byte encoding, `invalidCharHandler` can be used to observe unsupported characters and warn or throw. You can also stop early by returning `true` from the handler, in which case `encode()` returns `null`. No transliteration is currently supported.  
+Untranslatable characters are set to � or ?. For single-byte and legacy multibyte encoding (Shift-JIS, EUC-JP, GBK, GB18030, Big5, and related code pages), `invalidCharHandler` can be used to observe unsupported characters and warn or throw. It also reports characters that encode to the fallback bytes but are not the character those bytes decode to. No transliteration is currently supported.
+
+The handler receives the character (a complete surrogate pair where possible) and its zero-based Unicode code-point index within the `write()` input where it began. Multibyte encoders can defer reporting until a later `write()` or `end()` when a surrogate or mapping sequence spans chunks; the index still refers to the original write.
+
+Returning exactly `true` discards the output of the current `write()` or `end()` and returns `null`. It does not undo earlier writes or terminate a stream; subsequent writes remain supported. For one-shot encoding, `encode()` returns `null` if the handler stops either phase. Other return values keep the normal replacement output, and thrown exceptions propagate (as stream errors when streaming).
+
 Node versions 0.10.31 and 0.11.13 are buggy, don't use them (see [#65](https://github.com/ashtuchkin/iconv-lite/issues/65), [#77](https://github.com/ashtuchkin/iconv-lite/issues/77)).  
 
 ## Testing

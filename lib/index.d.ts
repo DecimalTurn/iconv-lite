@@ -34,17 +34,20 @@ export interface EncodeOptions {
    * Called when encoding a character that cannot be represented in the target encoding.
    * Return `true` to stop encoding early and make `iconv.encode()` return `null`.
    *
-   * Currently used by single-byte encoders only.
+   * Used by single-byte and legacy multibyte encoders. Also reports characters
+   * that map to the fallback bytes but differ from the character those bytes decode to.
+   * Returning `true` discards the current write's output, not earlier writes.
    *
    * @param char - The unencodable character.
-   * @param index - The position of the character in the input string.
+   * @param index - The code-point position in the input write where the character began.
+   * Multibyte encoders may defer the callback until a later write or end().
    */
   invalidCharHandler?: (char: string, index: number) => boolean | void;
 }
 
 export interface EncoderStream<Bytes extends Uint8Array = Buffer> {
   write(str: string): Bytes | null;
-  end(): Bytes | undefined;
+  end(): Bytes | null | undefined;
 }
 
 export interface DecoderStream {

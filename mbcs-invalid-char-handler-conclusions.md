@@ -2,10 +2,15 @@
 
 ## Conclusion
 
-It should be possible to extend the current `invalidCharHandler` strategy to
-the MBCS encoders without redesigning the public API. The main implementation
-would belong in [`encodings/dbcs-codec.js`](./encodings/dbcs-codec.js), with
+The current `invalidCharHandler` strategy is now implemented for the MBCS
+encoders in [`encodings/dbcs-codec.js`](./encodings/dbcs-codec.js), with
 corresponding tests and documentation updates.
+
+Callbacks report the code-point index in the write where the character began,
+even when reporting is deferred to a later write or `end()`. Returning exactly
+`true` discards the current operation's output and returns `null`, while
+clearing pending state so that the encoder remains reusable. One-shot
+`encode()` returns `null` if either `write()` or `end()` is stopped.
 
 ## Why the implementation is different from SBCS
 
@@ -47,9 +52,9 @@ The MBCS encoder should:
   possible, consistently with the SBCS implementation.
 - **Chunk boundaries:** Pending lead surrogates and sequence state can span
   `write()` calls.
-- **`end()`:** Pending lone surrogates and incomplete sequences currently emit
-  fallback output. Handler behavior for these cases should be defined and
-  tested.
+- **`end()`:** A pending sequence uses its valid standalone mapping when
+  available. Pending lone surrogates invoke the handler before emitting fallback
+  output. Stopping `end()` discards all output from that flush.
 - **GB18030:** Algorithmically encodable characters must not be reported as
   invalid merely because they are absent from the ordinary encode table.
 - **Streams and errors:** Stream encoding, handler exceptions, and stopped
@@ -70,6 +75,9 @@ Tests should cover:
 - handler exceptions; and
 - early termination and encoder reuse.
 
-This is a reasonable follow-up change, but it should be implemented as
-MBCS-specific mapping-aware logic rather than by simply copying the SBCS byte
-comparison.
+The implementation uses MBCS-specific mapping-aware logic rather than simply
+copying the SBCS byte comparison. Related fallback fixes resolve unmappable
+configured defaults to `?`, handle defaults which also start a sequence, and
+emit multibyte replacement codes consistently in both `write()` and `end()`.
+Sequence prefixes are also flushed before reporting a following lone
+surrogate, preserving input order.

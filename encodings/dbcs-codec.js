@@ -124,12 +124,22 @@ class DBCSCodec {
       }
     }
 
-    this.defCharSB = this.encodeTable[0][iconv.defaultCharSingleByte.charCodeAt(0)]
-    if (this.defCharSB === UNASSIGNED) this.defCharSB = this.encodeTable[0]["?"]
-    if (this.defCharSB === UNASSIGNED) this.defCharSB = "?".charCodeAt(0)
+    const defaultCodePoint = iconv.defaultCharSingleByte.codePointAt(0)
+    const defaultBucket = this.encodeTable[defaultCodePoint >> 8]
+    this.defCharSB = defaultBucket ? defaultBucket[defaultCodePoint & 0xFF] : UNASSIGNED
+    if (this.defCharSB <= SEQ_START) {
+      this.defCharSB = this.encodeTableSeq[SEQ_START - this.defCharSB][DEF_CHAR]
+    }
+    if (this.defCharSB === undefined || this.defCharSB < 0) this.defCharSB = this.encodeTable[0][0x3F]
+    if (this.defCharSB === UNASSIGNED) this.defCharSB = 0x3F
+
+    const defaultBytes = iconv.backend.allocBytes(4)
+    const defaultLength = writeDBCSCode(defaultBytes, 0, this.defCharSB)
+    const decoder = new DBCSDecoder(this, iconv.backend)
+    this.defaultChar = decoder.write(defaultBytes.subarray(0, defaultLength)) + decoder.end()
   }
 
-  createEncoder (options, iconv) { return new DBCSEncoder(this, iconv.backend) }
+  createEncoder (options, iconv) { return new DBCSEncoder(this, iconv.backend, options) }
   createDecoder (options, iconv) { return new DBCSDecoder(this, iconv.backend) }
 
   // Decoder helpers
@@ -264,17 +274,32 @@ class DBCSCodec {
 // == Encoder ==================================================================
 
 class DBCSEncoder {
-  constructor (codec, backend) {
+  constructor (codec, backend, options) {
     this.backend = backend
-    // Encoder state
-    this.leadSurrogate = -1
-    this.seqObj = undefined
+    this.reset()
 
     // Static data
     this.encodeTable = codec.encodeTable
     this.encodeTableSeq = codec.encodeTableSeq
     this.defaultCharSingleByte = codec.defCharSB
+    this.defaultChar = codec.defaultChar
+    this.invalidCharHandler = options && options.invalidCharHandler
     this.gb18030 = codec.gb18030
+  }
+
+  reset () {
+    this.leadSurrogate = -1
+    this.leadSurrogateIndex = 0
+    this.seqObj = undefined
+    this.seqChars = ""
+    this.seqIndex = 0
+  }
+
+  stopOnInvalid (code, chars, index) {
+    const invalidCharHandler = this.invalidCharHandler
+    return typeof invalidCharHandler === "function" &&
+      (code === UNASSIGNED || (code === this.defaultCharSingleByte && chars !== this.defaultChar)) &&
+      invalidCharHandler(chars, index) === true
   }
 
   write (str) {
@@ -282,75 +307,80 @@ class DBCSEncoder {
     const pendingChars = (this.leadSurrogate === -1 ? 0 : 1) + (this.seqObj === undefined ? 0 : 1)
     var newBuf = this.backend.allocBytes((str.length + pendingChars) * (this.gb18030 ? 4 : 3))
     var leadSurrogate = this.leadSurrogate
+    var leadSurrogateIndex = this.leadSurrogateIndex
     var seqObj = this.seqObj
+    var seqChars = this.seqChars
+    var seqIndex = this.seqIndex
     var nextChar = -1
+    var nextIndex = 0
+    var codePointIndex = 0
     var i = 0; var j = 0
+    // Keep pending state local so stopping or throwing cannot leave stale data.
+    this.reset()
 
     while (true) {
       // 0. Get next character.
-      if (nextChar === -1) {
-        if (i == str.length) break
-        var uCode = str.charCodeAt(i++)
-      } else {
-        var uCode = nextChar
+      var charCode; var charIndex
+      if (nextChar !== -1) {
+        charCode = nextChar
+        charIndex = nextIndex
         nextChar = -1
+      } else if (leadSurrogate !== -1) {
+        if (i == str.length) break
+        charCode = leadSurrogate
+        charIndex = leadSurrogateIndex
+        const trail = str.charCodeAt(i)
+        if (trail >= 0xDC00 && trail < 0xE000) {
+          charCode = 0x10000 + (leadSurrogate - 0xD800) * 0x400 + trail - 0xDC00
+          i++
+          codePointIndex++
+        }
+        leadSurrogate = -1
+      } else {
+        if (i == str.length) break
+        charCode = str.codePointAt(i)
+        charIndex = codePointIndex++
+        i += charCode > 0xFFFF ? 2 : 1
+        if (charCode >= 0xD800 && charCode < 0xDC00 && i === str.length) {
+          leadSurrogate = charCode
+          leadSurrogateIndex = charIndex
+          continue
+        }
       }
 
-      // 1. Handle surrogates.
-      if (uCode >= 0xD800 && uCode < 0xE000) { // Char is one of surrogates.
-        if (uCode < 0xDC00) { // We've got lead surrogate.
-          if (leadSurrogate === -1) {
-            leadSurrogate = uCode
-            continue
-          } else {
-            leadSurrogate = uCode
-            // Double lead surrogate found.
-            uCode = UNASSIGNED
-          }
-        } else { // We've got trail surrogate.
-          if (leadSurrogate !== -1) {
-            uCode = 0x10000 + (leadSurrogate - 0xD800) * 0x400 + (uCode - 0xDC00)
-            leadSurrogate = -1
-          } else {
-            // Incomplete surrogate pair - only trail surrogate found.
-            uCode = UNASSIGNED
-          }
-        }
-      } else if (leadSurrogate !== -1) {
-        // Incomplete surrogate pair - only lead surrogate found.
-        nextChar = uCode; uCode = UNASSIGNED // Write an error, then current char.
-        leadSurrogate = -1
-      }
+      // 1. Keep the original character for reporting lone surrogates.
+      var chars = typeof this.invalidCharHandler === "function" ? String.fromCodePoint(charCode) : ""
+      var uCode = charCode >= 0xD800 && charCode < 0xE000 ? UNASSIGNED : charCode
 
       // 2. Convert uCode character.
       var dbcsCode = UNASSIGNED
-      if (seqObj !== undefined && uCode != UNASSIGNED) { // We are in the middle of the sequence
-        var resCode = seqObj[uCode]
+      if (seqObj !== undefined) { // We are in the middle of the sequence
+        var resCode = uCode === UNASSIGNED ? undefined : seqObj[uCode]
         if (typeof resCode === "object") { // Sequence continues.
           seqObj = resCode
+          seqChars += chars
           continue
         } else if (typeof resCode === "number") { // Sequence finished. Write it.
           dbcsCode = resCode
+          chars = seqChars + chars
         } else if (resCode == undefined) { // Current character is not part of the sequence.
-          // Try default character for this sequence
           resCode = seqObj[DEF_CHAR]
-          if (resCode !== undefined) {
-            dbcsCode = resCode // Found. Write it.
-            nextChar = uCode // Current character will be written too in the next iteration.
-          } else {
-            // TODO: What if we have no default? (resCode == undefined)
-            // Then, we should write first char of the sequence as-is and try the rest recursively.
-            // Didn't do it for now because no encoding has this situation yet.
-            // Currently, just skip the sequence and write current char.
-          }
+          dbcsCode = resCode === undefined ? UNASSIGNED : resCode
+          nextChar = charCode
+          nextIndex = charIndex
+          chars = seqChars
         }
+        charIndex = seqIndex
         seqObj = undefined
+        seqChars = ""
       } else if (uCode >= 0) {  // Regular character
         var subtable = this.encodeTable[uCode >> 8]
         if (subtable !== undefined) { dbcsCode = subtable[uCode & 0xFF] }
 
         if (dbcsCode <= SEQ_START) { // Sequence start
           seqObj = this.encodeTableSeq[SEQ_START - dbcsCode]
+          seqChars = chars
+          seqIndex = charIndex
           continue
         }
 
@@ -369,27 +399,16 @@ class DBCSEncoder {
       }
 
       // 3. Write dbcsCode character.
+      if (this.stopOnInvalid(dbcsCode, chars, charIndex)) return null
       if (dbcsCode === UNASSIGNED) { dbcsCode = this.defaultCharSingleByte }
-
-      if (dbcsCode < 0x100) {
-        newBuf[j++] = dbcsCode
-      } else if (dbcsCode < 0x10000) {
-        newBuf[j++] = dbcsCode >> 8   // high byte
-        newBuf[j++] = dbcsCode & 0xFF // low byte
-      } else if (dbcsCode < 0x1000000) {
-        newBuf[j++] = dbcsCode >> 16
-        newBuf[j++] = (dbcsCode >> 8) & 0xFF
-        newBuf[j++] = dbcsCode & 0xFF
-      } else {
-        newBuf[j++] = dbcsCode >>> 24
-        newBuf[j++] = (dbcsCode >>> 16) & 0xFF
-        newBuf[j++] = (dbcsCode >>> 8) & 0xFF
-        newBuf[j++] = dbcsCode & 0xFF
-      }
+      j = writeDBCSCode(newBuf, j, dbcsCode)
     }
 
     this.seqObj = seqObj
+    this.seqChars = seqChars
+    this.seqIndex = seqIndex
     this.leadSurrogate = leadSurrogate
+    this.leadSurrogateIndex = leadSurrogateIndex
     return this.backend.bytesToResult(newBuf, j)
   }
 
@@ -397,26 +416,23 @@ class DBCSEncoder {
     if (this.leadSurrogate === -1 && this.seqObj === undefined) { return } // All clean. Most often case.
 
     var newBuf = this.backend.allocBytes(10); var j = 0
+    const seqObj = this.seqObj
+    const seqChars = this.seqChars
+    const seqIndex = this.seqIndex
+    const leadSurrogate = this.leadSurrogate
+    const leadSurrogateIndex = this.leadSurrogateIndex
+    this.reset()
 
-    if (this.seqObj) { // We're in the sequence.
-      var dbcsCode = this.seqObj[DEF_CHAR]
-      if (dbcsCode !== undefined) { // Write beginning of the sequence.
-        if (dbcsCode < 0x100) {
-          newBuf[j++] = dbcsCode
-        } else {
-          newBuf[j++] = dbcsCode >> 8   // high byte
-          newBuf[j++] = dbcsCode & 0xFF // low byte
-        }
-      } else {
-        // See todo above.
-      }
-      this.seqObj = undefined
+    if (seqObj) { // We're in the sequence.
+      const code = seqObj[DEF_CHAR] === undefined ? UNASSIGNED : seqObj[DEF_CHAR]
+      if (this.stopOnInvalid(code, seqChars, seqIndex)) return null
+      j = writeDBCSCode(newBuf, j, code === UNASSIGNED ? this.defaultCharSingleByte : code)
     }
 
-    if (this.leadSurrogate !== -1) {
+    if (leadSurrogate !== -1) {
       // Incomplete surrogate pair - only lead surrogate found.
-      newBuf[j++] = this.defaultCharSingleByte
-      this.leadSurrogate = -1
+      if (this.stopOnInvalid(UNASSIGNED, String.fromCharCode(leadSurrogate), leadSurrogateIndex)) return null
+      j = writeDBCSCode(newBuf, j, this.defaultCharSingleByte)
     }
 
     return this.backend.bytesToResult(newBuf, j)
@@ -424,6 +440,14 @@ class DBCSEncoder {
 
   // Export for testing
   findIdx (table, val) { return findIdx(table, val) }
+}
+
+function writeDBCSCode (bytes, offset, code) {
+  if (code >= 0x1000000) bytes[offset++] = code >>> 24
+  if (code >= 0x10000) bytes[offset++] = code >>> 16
+  if (code >= 0x100) bytes[offset++] = code >>> 8
+  bytes[offset++] = code & 0xFF
+  return offset
 }
 
 // == Decoder ==================================================================
