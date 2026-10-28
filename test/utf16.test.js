@@ -1,7 +1,5 @@
-"use strict"
-
-const assert = require("assert")
-const utils = require("./helpers/utils")
+import assert from "assert"
+import utils from "./helpers/utils.js"
 const iconv = utils.requireIconv()
 const hex = utils.hex
 
@@ -293,6 +291,34 @@ describe("UTF-16 encoder #node-web", function () {
   const enc = "utf-16"
   it("uses UTF-16LE and adds BOM when encoding", function () {
     assert.equal(hex(iconv.encode(testStr, enc)), hex(utf16leBOM) + " " + hex(utf16leBuf))
+  })
+
+  it("doesn't change encoding options reused for other encodings", function () {
+    const options = {}
+    assert.equal(hex(iconv.encode(testStr, enc, options)), hex(utf16leBOM) + " " + hex(utf16leBuf))
+    assert.equal(hex(iconv.encode("A", "utf8", options)), "41")
+    assert.deepStrictEqual(options, {})
+  })
+
+  it("accepts frozen encoding options when adding the default BOM", function () {
+    assert.equal(hex(iconv.encode(testStr, enc, Object.freeze({}))), hex(utf16leBOM) + " " + hex(utf16leBuf))
+  })
+
+  it("honors BOM defaults and explicit settings in frozen encoding options", function () {
+    for (const [addBOM, includeBOM] of [[undefined, true], [null, false], [false, false], [true, true]]) {
+      const expected = (includeBOM ? hex(utf16leBOM) + " " : "") + hex(utf16leBuf)
+      assert.equal(hex(iconv.encode(testStr, enc, Object.freeze({ addBOM }))), expected)
+    }
+  })
+
+  it("preserves inherited encoding options", function () {
+    class Options {
+      get addBOM () { return false }
+    }
+    for (const options of [Object.create({ addBOM: false }), new Options()]) {
+      assert.equal(hex(iconv.encode(testStr, enc, options)), hex(utf16leBuf))
+      assert.deepStrictEqual(Object.keys(options), [])
+    }
   })
 
   it("can skip BOM", function () {

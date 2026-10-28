@@ -1,3 +1,51 @@
+## 1.0.0-alpha.3
+
+### ⚠️ Breaking changes
+
+- Migrate to native ES modules.
+
+    Use `import iconv from "iconv-lite"` or dynamic `import()` from CommonJS. Direct `require()` is no longer supported. Node.js 22 remains the minimum version. Browser consumers can use `iconv-lite/web` or `lib/index-web.js`. Encoding modules now load at import time; DBCS table data and codecs are still initialized on demand. Mutable settings remain on the default export.
+
+- Extend custom backend requirements for internal codecs - by [@bjohansebas](https://github.com/bjohansebas) in [#429](https://github.com/pillarjs/iconv-lite/pull/429)
+
+    Custom backends must implement `encodeString`, `decodeBytes` and `copyBytes`. The built-in Node and Web backends provide these methods.
+
+### 🚀 Improvements
+
+- Refactor DBCS codecs for Node and browsers - by [@bjohansebas](https://github.com/bjohansebas)
+
+    DBCS codecs, including GBK/GB18030, Big5, Shift_JIS, EUC-JP and EUC-KR, now use classes and backend allocations and conversions. Node encoders retain Buffer results, while Web encoders return Uint8Array without requiring a Buffer polyfill. Conversions reuse the Web UTF-16 decoder and DBCS pending-byte storage, and avoid redundant Node buffer views.
+
+- Refactor internal codecs for Node and browsers - by [@bjohansebas](https://github.com/bjohansebas) in [#429](https://github.com/pillarjs/iconv-lite/pull/429)
+
+    UTF-8, CESU-8, binary, hex and Base64 now use classes and backend conversions. Node retains native Buffer conversions, while Web encoders return Uint8Array without requiring a Buffer polyfill. Binary, hex and Base64 decoding avoids input copies for complete inputs, and Web conversions use native hex/Base64 methods where available and beneficial.
+
+### 🐞 Bug fixes
+
+- Reject unassigned GB18030 four-byte pointers - by [@binggao1230](https://github.com/binggao1230) and [@bjohansebas](https://github.com/bjohansebas) in [#417](https://github.com/pillarjs/iconv-lite/pull/417)
+
+    Unassigned pointers now emit the configured replacement character instead of unrelated characters or unpaired surrogates. Supplementary characters decode directly without a range search. Exhaustive pointer and chunk-boundary tests run with both backends and in browsers.
+
+- Preserve DBCS output across chunk boundaries - by [@bjohansebas](https://github.com/bjohansebas)
+
+    Streaming encoders and decoders reserve space for pending input as well as the new chunk. This prevents truncated output when completing surrogate pairs, Big5 combining sequences, or reprocessing malformed multibyte input.
+
+- Use the default byte when encoding U+FFFD in SBCS - by [@mamicicekel](https://github.com/mamicicekel) in [#424](https://github.com/pillarjs/iconv-lite/pull/424)
+
+    Single-byte encoders now consistently encode `U+FFFD` using `defaultCharSingleByte` (`?` by default), instead of mapping it to an unassigned byte from the decoding table.
+
+- Preserve caller options in UTF-16 and UTF-32 auto encoders - by [@KennyMcSimpson](https://github.com/KennyMcSimpson) and [@bjohansebas](https://github.com/bjohansebas) in [#427](https://github.com/pillarjs/iconv-lite/pull/427)
+
+    The automatic UTF-16 and UTF-32 encoders no longer modify the caller's options or throw when those options are frozen. Reusing the options for another encoding no longer adds an unexpected BOM. Explicit and inherited `addBOM` values, and UTF-32's `defaultEncoding`, remain respected.
+
+- Correct UTF-8 BOM handling - by [@bjohansebas](https://github.com/bjohansebas) in [#429](https://github.com/pillarjs/iconv-lite/pull/429)
+
+    UTF-8 decoding strips only one leading BOM and calls `stripBOM` callbacks once.
+
+- Correct CESU-8 finalization - by [@spokodev](https://github.com/spokodev) and [@bjohansebas](https://github.com/bjohansebas) in [#429](https://github.com/pillarjs/iconv-lite/pull/429)
+
+    Incomplete CESU-8 sequences emit one replacement character on final flush, without a spurious `0` or repeated output on subsequent flushes.
+
 ## 1.0.0-alpha.2
 
 ### ⚠️ Breaking changes

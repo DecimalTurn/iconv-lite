@@ -1,6 +1,5 @@
-var assert = require("assert")
-var join = require("path").join
-var iconv = require(join(__dirname, "/../"))
+import assert from "assert"
+import iconv from "../lib/index-node.js"
 
 describe("invalidCharHandler (SBCS)", function () {
   it("calls handler for unencodable chars", function () {

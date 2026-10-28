@@ -1,5 +1,3 @@
-"use strict"
-
 // Runs the vendored Web Platform Tests (test/wpt/encoding/*.any.js) against
 // iconv-lite using wpt-runner (jsdom) with the TextDecoder/TextEncoder shim from
 // ./shim.js. The WPT files are unmodified upstream copies (see ./README.md).
@@ -8,17 +6,17 @@
 //   node test/wpt/run.js textdecoder-fatal   # filter by filename substring
 //   node test/wpt/run.js "" --strict         # exit non-zero on any failure
 
-const path = require("path")
-const wptRunner = require("wpt-runner")
-const setup = require("./shim")
-const { WINDOW_TESTS, runWindowTest } = require("./run-window")
-const { runDecodeCompare } = require("./decode-compare")
+import path from "path"
+import wptRunner from "wpt-runner"
+import setup from "./shim.js"
+import { WINDOW_TESTS, isWindowTest, runWindowTest } from "./run-window.js"
+import { runDecodeCompare } from "./decode-compare.js"
 
 const args = process.argv.slice(2)
 const strict = args.includes("--strict")
 const target = args.find((a) => !a.startsWith("--")) || ""
 
-const wptRoot = path.join(__dirname, "upstream")
+const wptRoot = path.join(import.meta.dirname, "upstream")
 
 // vm-based window tests (Node.js-style runner) that jsdom can't run.
 let extraFailures = 0
@@ -39,15 +37,15 @@ if ("decode-compare".includes(target) || target === "") {
 
 // Serve from the WPT root so both relative (resources/...) and absolute
 // (/common/...) test includes resolve. jsdom runs the `.any.js` API tests;
-// `.window.js` mapping tests are handled by the vm runner above.
+// mapping tests with query variants are handled by the vm runner above.
 //
-// TODO: the `.window.js` non-TextDecoder variants (?XMLHttpRequest, ?document)
+// TODO: the non-TextDecoder variants (?XMLHttpRequest, ?document)
 // and the legacy-mb iframe tests need the official WPT python server. Running
 // those (e.g. via `wpt serve`) is future work to extend coverage.
 wptRunner(wptRoot, {
   rootURL: "/",
   setup,
-  filter: (testPath) => /\.any\.html$/.test(testPath) && testPath.includes(target)
+  filter: (testPath) => /\.any\.html$/.test(testPath) && !isWindowTest(testPath) && testPath.includes(target)
 })
   .then((failures) => {
     console.log(`\n=== ${failures + extraFailures} failing WPT test(s) against iconv-lite ===`)

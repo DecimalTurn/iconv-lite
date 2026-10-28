@@ -1,5 +1,3 @@
-"use strict"
-
 /**
  * UTF-32LE / UTF-32BE / UTF-32 (auto) codecs.
  *
@@ -304,9 +302,8 @@ function stringFromUnits (units, length) {
  */
 class Utf32Codec {
   createEncoder (options, iconv) {
-    options = options || {}
-    if (options.addBOM === undefined) { options.addBOM = true }
-    return iconv.getEncoder(options.defaultEncoding || "utf-32le", options)
+    const { addBOM = true, defaultEncoding } = options || {}
+    return iconv.getEncoder(defaultEncoding || "utf-32le", { ...options, addBOM, defaultEncoding })
   }
 
   createDecoder (options, iconv) {
@@ -397,11 +394,11 @@ function detectEncoding (bufs, defaultEncoding) {
   return defaultEncoding || "utf-32le"
 }
 
-exports.utf32le = Utf32LECodec
-exports.utf32be = Utf32BECodec
+export const utf32le = Utf32LECodec
+export const utf32be = Utf32BECodec
 // Aliases.
-exports.ucs4le = "utf32le"
-exports.ucs4be = "utf32be"
+export const ucs4le = "utf32le"
+export const ucs4be = "utf32be"
 
-exports.utf32 = Utf32Codec
-exports.ucs4 = "utf32"
+export const utf32 = Utf32Codec
+export const ucs4 = "utf32"

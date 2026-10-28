@@ -1,9 +1,7 @@
-"use strict"
-
 // Single-byte codec. Needs a 'chars' string parameter that contains 256 or 128 chars that
 // correspond to encoded bytes (if 128 - then lower half is ASCII).
 
-exports._sbcs = class SBCSCodec {
+export const _sbcs = class SBCSCodec {
   constructor (codecOptions, iconv) {
     if (!codecOptions) {
       throw new Error("SBCS codec is called without the data.")
@@ -42,7 +40,11 @@ exports._sbcs = class SBCSCodec {
     const encodeBuf = iconv.backend.allocBytes(65536, defaultCharByte)
 
     for (let i = 0; i < codecOptions.chars.length; i++) {
-      encodeBuf[codecOptions.chars.charCodeAt(i)] = i
+      const code = codecOptions.chars.charCodeAt(i)
+      // U+FFFD marks unassigned bytes in decode tables, not an encodable character.
+      // Keep defaultCharSingleByte for it instead of mapping it to an unassigned byte.
+      if (code === 0xFFFD) continue
+      encodeBuf[code] = i
     }
 
     this.encodeBuf = encodeBuf

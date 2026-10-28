@@ -1,9 +1,7 @@
-"use strict"
-
-const assert = require("assert")
-const unorm = require("unorm")
-const utils = require("./helpers/utils")
-const sbcsData = require("./tables/sbcs-data.json")
+import assert from "assert"
+import unorm from "unorm"
+import utils from "./helpers/utils.js"
+import sbcsData from "./tables/sbcs-data.json" with { type: "json" }
 const iconv = utils.requireIconv()
 
 const aliases = {
@@ -193,4 +191,16 @@ describe("Full SBCS encoding tests #node-web", function () {
             assert.strictEqual(iconv.encode(str, enc).toString('hex'), convBack.convert(Buffer.from(str)).toString('hex'));
             */
       })(enc) } }
+})
+
+describe("SBCS encode maps U+FFFD to defaultCharSingleByte #node-web", function () {
+  const encodings = ["windows1252", "windows874", "iso88593", "koi8r"]
+
+  encodings.forEach(function (enc) {
+    it(enc + " encodes U+FFFD as ?", function () {
+      const bytes = iconv.encode("\uFFFD", enc)
+      assert.strictEqual(bytes.length, 1)
+      assert.strictEqual(bytes[0], iconv.defaultCharSingleByte.charCodeAt(0))
+    })
+  })
 })

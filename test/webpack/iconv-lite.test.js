@@ -1,15 +1,13 @@
-"use strict"
-
-const iconv = require("iconv-lite")
-iconv.setBackend(require("iconv-lite/backends/web"))
-require("../helpers/utils").setIconvLite(iconv)
-
 // List of test files that are ready to be run in web environment.
-require("../cyrillic.test")
-require("../greek.test")
-require("../sbcs.test")
-require("../turkish.test")
-require("../utf16.test")
-require("../utf32.test")
-require("../utf7.test")
-require("../utils.test")
+import "../cyrillic.test.js"
+import "../dbcs-backends.test.js"
+import "../dbcs-streaming.test.js"
+import "../gb18030.test.js"
+import "../greek.test.js"
+import "../internal.test.js"
+import "../sbcs.test.js"
+import "../turkish.test.js"
+import "../utf16.test.js"
+import "../utf32.test.js"
+import "../utf7.test.js"
+import "../utils.test.js"
