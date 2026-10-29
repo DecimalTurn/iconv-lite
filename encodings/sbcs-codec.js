@@ -70,7 +70,10 @@ class SBCSEncoder {
     const encodeBuf = this.encodeBuf
     const invalidCharHandler = this.invalidCharHandler
 
-    if (typeof invalidCharHandler === "function") {
+    if (typeof invalidCharHandler !== "function") {
+      for (let i = 0; i < str.length; i++)
+      { bytes[i] = encodeBuf[str.charCodeAt(i)] }
+    } else {
       const defaultCharByte = this.defaultCharByte
       const defaultCharCode = this.defaultCharCode
       let codePointIndex = 0
@@ -108,9 +111,6 @@ class SBCSEncoder {
         bytes[i] = encodedByte
         codePointIndex++
       }
-    } else {
-      for (let i = 0; i < str.length; i++)
-      { bytes[i] = encodeBuf[str.charCodeAt(i)] }
     }
 
     return this.backend.bytesToResult(bytes, bytes.length)
