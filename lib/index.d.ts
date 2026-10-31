@@ -37,14 +37,15 @@ export interface EncodeOptions {
    * Currently used by single-byte encoders only.
    *
    * @param char - The unencodable character.
-   * @param index - The position of the character in the input string.
+   * @param index - The zero-based code-point position in the write where the character starts.
+   * A trailing high surrogate is buffered until the next nonempty write or `end()`.
    */
   invalidCharHandler?: (char: string, index: number) => boolean | void;
 }
 
 export interface EncoderStream<Bytes extends Uint8Array = Buffer> {
   write(str: string): Bytes | null;
-  end(): Bytes | undefined;
+  end(): Bytes | null | undefined;
 }
 
 export interface DecoderStream {

@@ -57,6 +57,9 @@ export const _sbcs = class SBCSCodec {
 }
 
 class SBCSEncoder {
+  #pendingHighSurrogate = ""
+  #pendingHighSurrogateIndex = 0
+
   constructor (opts, codec, backend) {
     this.backend = backend
     this.encodeBuf = codec.encodeBuf
@@ -66,57 +69,84 @@ class SBCSEncoder {
   }
 
   write (str) {
+    if (typeof this.invalidCharHandler !== "function") {
+      const bytes = this.backend.allocBytes(str.length)
+      const encodeBuf = this.encodeBuf
+      for (let i = 0; i < str.length; i++) {
+        bytes[i] = encodeBuf[str.charCodeAt(i)]
+      }
+      return this.backend.bytesToResult(bytes, bytes.length)
+    }
+
+    return this.#writeWithHandler(str, false)
+  }
+
+  #writeWithHandler (str, final) {
+    // Empty writes do not finalize a character buffered from the previous chunk.
+    if (str.length === 0 && !final) {
+      return this.backend.bytesToResult(this.backend.allocBytes(0), 0)
+    }
+
+    const pending = this.#pendingHighSurrogate
+    const pendingIndex = this.#pendingHighSurrogateIndex
+    this.#pendingHighSurrogate = ""
+    if (pending) str = pending + str
+
     const bytes = this.backend.allocBytes(str.length)
     const encodeBuf = this.encodeBuf
     const invalidCharHandler = this.invalidCharHandler
+    const defaultCharByte = this.defaultCharByte
+    const defaultCharCode = this.defaultCharCode
+    let codePointIndex = 0
+    let written = str.length
 
-    if (typeof invalidCharHandler !== "function") {
-      for (let i = 0; i < str.length; i++)
-      { bytes[i] = encodeBuf[str.charCodeAt(i)] }
-    } else {
-      const defaultCharByte = this.defaultCharByte
-      const defaultCharCode = this.defaultCharCode
-      let codePointIndex = 0
+    for (let i = 0; i < str.length; i++) {
+      const fromPreviousWrite = pending.length > 0 && i === 0
+      const index = fromPreviousWrite ? pendingIndex : codePointIndex
+      const charCode = str.charCodeAt(i)
+      const encodedByte = encodeBuf[charCode]
 
-      for (let i = 0; i < str.length; i++) {
-        const charCode = str.charCodeAt(i)
-        const encodedByte = encodeBuf[charCode]
+      // U+FFFD marks unassigned bytes; it is never a valid character at the fallback byte.
+      if (encodedByte !== defaultCharByte || (charCode === defaultCharCode && charCode !== 0xFFFD)) {
+        bytes[i] = encodedByte
+        if (!fromPreviousWrite) codePointIndex++
+        continue
+      }
 
-        // `encodeBuf` uses the default byte for unmappable chars. Allow the
-        // codec character that genuinely maps to that byte.
-        if (encodedByte !== defaultCharByte || (charCode === defaultCharCode && charCode !== 0xFFFD)) {
+      if (charCode >= 0xD800 && charCode <= 0xDBFF) {
+        if (i + 1 === str.length && !final) {
+          this.#pendingHighSurrogate = str.charAt(i)
+          this.#pendingHighSurrogateIndex = index
+          written = i
+          break
+        }
+
+        const nextCharCode = str.charCodeAt(i + 1)
+        if (nextCharCode >= 0xDC00 && nextCharCode <= 0xDFFF) {
+          if (invalidCharHandler(str.slice(i, i + 2), index) === true) {
+            return null
+          }
           bytes[i] = encodedByte
+          bytes[i + 1] = encodeBuf[nextCharCode]
+          i++
           codePointIndex++
           continue
         }
-
-        // Report a surrogate pair together rather than as two invalid code units.
-        if (charCode >= 0xD800 && charCode <= 0xDBFF && i + 1 < str.length) {
-          const nextCharCode = str.charCodeAt(i + 1)
-          if (nextCharCode >= 0xDC00 && nextCharCode <= 0xDFFF) {
-            if (invalidCharHandler(str.slice(i, i + 2), codePointIndex) === true) {
-              return null
-            }
-            bytes[i] = encodedByte
-            bytes[i + 1] = encodeBuf[nextCharCode]
-            i++
-            codePointIndex++
-            continue
-          }
-        }
-
-        if (invalidCharHandler(str.charAt(i), codePointIndex) === true) {
-          return null
-        }
-        bytes[i] = encodedByte
-        codePointIndex++
       }
+
+      if (invalidCharHandler(str.charAt(i), index) === true) {
+        return null
+      }
+      bytes[i] = encodedByte
+      if (!fromPreviousWrite) codePointIndex++
     }
 
-    return this.backend.bytesToResult(bytes, bytes.length)
+    return this.backend.bytesToResult(bytes, written)
   }
 
-  end () {}
+  end () {
+    if (this.#pendingHighSurrogate) return this.#writeWithHandler("", true)
+  }
 }
 
 class SBCSDecoder {

@@ -128,6 +128,136 @@ describe("invalidCharHandler (SBCS) #node-web", function () {
     assert.strictEqual(calls[1].index, 2)
   })
 
+  it("reports a split surrogate pair once, keeping the index where it starts", function () {
+    const calls = []
+    const encoder = iconv.getEncoder("latin1", {
+      invalidCharHandler (char, index) { calls.push({ char, index }) }
+    })
+
+    assert.deepStrictEqual(Array.from(encoder.write("A\uD83D")), [0x41])
+    assert.deepStrictEqual(Array.from(encoder.write("")), [])
+    assert.deepStrictEqual(calls, [])
+    assert.deepStrictEqual(Array.from(encoder.write("\uDE42世B")), [0x3F, 0x3F, 0x3F, 0x42])
+    assert.deepStrictEqual(calls, [{ char: "🙂", index: 1 }, { char: "世", index: 1 }])
+    assert.strictEqual(encoder.end(), undefined)
+  })
+
+  it("preserves output and callback characters across every split position", function () {
+    const input = "A🙂世B\uD800"
+    for (let split = 1; split < input.length; split++) {
+      const calls = []
+      const encoder = iconv.getEncoder("latin1", {
+        invalidCharHandler (char) { calls.push(char) }
+      })
+      const chunks = [encoder.write(input.slice(0, split)), encoder.write(""), encoder.write(input.slice(split))]
+      const tail = encoder.end()
+      if (tail) chunks.push(tail)
+
+      assert.deepStrictEqual(Buffer.concat(chunks), Buffer.from([0x41, 0x3F, 0x3F, 0x3F, 0x42, 0x3F]))
+      assert.deepStrictEqual(calls, ["🙂", "世", "\uD800"])
+      assert.strictEqual(encoder.end(), undefined)
+    }
+  })
+
+  it("reports a buffered high surrogate separately when no low surrogate follows", function () {
+    const calls = []
+    const encoder = iconv.getEncoder("latin1", {
+      invalidCharHandler (char, index) { calls.push({ char, index }) }
+    })
+
+    assert.deepStrictEqual(Array.from(encoder.write("A\uD800")), [0x41])
+    assert.deepStrictEqual(Array.from(encoder.write("世")), [0x3F, 0x3F])
+    assert.deepStrictEqual(calls, [{ char: "\uD800", index: 1 }, { char: "世", index: 0 }])
+    assert.strictEqual(encoder.end(), undefined)
+  })
+
+  it("discards the current write when a buffered character cancels it", function () {
+    const calls = []
+    const encoder = iconv.getEncoder("latin1", {
+      invalidCharHandler (char, index) {
+        calls.push({ char, index })
+        return true
+      }
+    })
+
+    assert.deepStrictEqual(Array.from(encoder.write("A\uD83D")), [0x41])
+    assert.strictEqual(encoder.write("\uDE42discarded\uD800"), null)
+    assert.deepStrictEqual(Array.from(encoder.write("B")), [0x42])
+    assert.strictEqual(encoder.end(), undefined)
+    assert.deepStrictEqual(calls, [{ char: "🙂", index: 1 }])
+  })
+
+  it("clears a buffered character when its handler throws", function () {
+    const error = new Error("Unencodable character")
+    const encoder = iconv.getEncoder("latin1", {
+      invalidCharHandler () { throw error }
+    })
+
+    encoder.write("\uD83D")
+    assert.throws(() => encoder.write("\uDE42"), actual => actual === error)
+    assert.deepStrictEqual(Array.from(encoder.write("A")), [0x41])
+    assert.strictEqual(encoder.end(), undefined)
+  })
+
+  it("lets the handler cancel a trailing high surrogate at end", function () {
+    const calls = []
+    const options = {
+      invalidCharHandler (char, index) {
+        calls.push({ char, index })
+        return true
+      }
+    }
+    const encoder = iconv.getEncoder("latin1", options)
+    assert.deepStrictEqual(Array.from(encoder.write("A\uD800")), [0x41])
+    assert.strictEqual(encoder.end(), null)
+    assert.strictEqual(encoder.end(), undefined)
+    assert.deepStrictEqual(calls, [{ char: "\uD800", index: 1 }])
+    assert.strictEqual(iconv.encode("A\uD800", "latin1", options), null)
+  })
+
+  it("propagates errors from a trailing high surrogate at end", function () {
+    const error = new Error("Incomplete character")
+    const options = { invalidCharHandler () { throw error } }
+    const encoder = iconv.getEncoder("latin1", options)
+
+    encoder.write("\uD800")
+    assert.throws(() => encoder.end(), actual => actual === error)
+    assert.strictEqual(encoder.end(), undefined)
+    assert.throws(() => iconv.encode("A\uD800", "latin1", options), actual => actual === error)
+  })
+
+  it("preserves immediate surrogate replacement without a handler", function () {
+    const encoder = iconv.getEncoder("latin1")
+    assert.deepStrictEqual(Array.from(encoder.write("\uD83D")), [0x3F])
+    assert.deepStrictEqual(Array.from(encoder.write("\uDE42")), [0x3F])
+    assert.strictEqual(encoder.end(), undefined)
+  })
+
+  it("handles split surrogate pairs through encodeStream", async function () {
+    const calls = []
+    const encoder = iconv.encodeStream("latin1", {
+      invalidCharHandler (char, index) { calls.push({ char, index }) }
+    })
+    const collected = new Promise((resolve, reject) => {
+      encoder.collect((error, bytes) => error ? reject(error) : resolve(bytes))
+    })
+
+    encoder.write("A\uD83D")
+    encoder.end("\uDE42B")
+    assert.deepStrictEqual(Array.from(await collected), [0x41, 0x3F, 0x3F, 0x42])
+    assert.deepStrictEqual(calls, [{ char: "🙂", index: 1 }])
+  })
+
+  it("emits stream errors when a handler rejects a trailing high surrogate", async function () {
+    const error = new Error("Incomplete character")
+    const encoder = iconv.encodeStream("latin1", {
+      invalidCharHandler () { throw error }
+    })
+    const errored = new Promise(resolve => encoder.once("error", resolve))
+    encoder.end("\uD800")
+    assert.strictEqual(await errored, error)
+  })
+
   it("supports stopping SBCS encoding via handler return value", function () {
     var calls = []
     var res = iconv.encode("A世界B", "latin1", {
