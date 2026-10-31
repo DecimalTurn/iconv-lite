@@ -7,6 +7,24 @@ describe("invalidCharHandler (Unicode and binary) #node-web", function () {
   let iconv
   beforeEach(function () { iconv = new Iconv(defaultIconv.backend) })
 
+  for (const encoding of ["hex", "base64"]) {
+    it(`${encoding} explicitly rejects the handler option`, function () {
+      assert.throws(() => iconv.getEncoder(encoding, { invalidCharHandler: () => "" }), {
+        name: "TypeError", message: "invalidCharHandler is not supported for " + encoding
+      })
+      const input = encoding === "hex" ? "4142" : "QUI="
+      assert.deepEqual(iconv.encode(input, encoding, { invalidCharHandler: undefined }), iconv.encode(input, encoding))
+    })
+  }
+
+  it("rejects non-function handlers instead of silently disabling validation", function () {
+    for (const encoding of ["latin1", "shiftjis", "utf8", "utf16le", "utf32", "utf7", "cesu8", "binary"]) {
+      assert.throws(() => iconv.encode("test", encoding, { invalidCharHandler: true }), {
+        name: "TypeError", message: "invalidCharHandler must be a function"
+      })
+    }
+  })
+
   for (const encoding of ["utf8", "utf32le", "utf32be", "utf32"]) {
     it(`${encoding} reports malformed input and replaces it at original positions`, function () {
       const calls = []

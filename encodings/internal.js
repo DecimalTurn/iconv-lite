@@ -12,6 +12,9 @@ class InternalCodec {
   }
 
   createEncoder (options, iconv) {
+    if ((this.enc === "hex" || this.enc === "base64") && options?.invalidCharHandler !== undefined) {
+      throw new TypeError("invalidCharHandler is not supported for " + this.enc)
+    }
     if (this.enc === "base64") {
       return new InternalEncoderBase64(iconv.backend)
     } else if (this.enc === "utf8") {
