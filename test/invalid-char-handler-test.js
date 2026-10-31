@@ -1,8 +1,15 @@
 import assert from "assert"
-import iconv from "../lib/index-node.js"
-import { canonicalizeEncoding } from "../lib/utils.js"
+import * as stream from "node:stream"
+import defaultIconv from "../lib/index-node.js"
+import Iconv from "../lib/iconv.js"
 
-describe("invalidCharHandler (SBCS)", function () {
+describe("invalidCharHandler (SBCS) #node-web", function () {
+  let iconv
+
+  beforeEach(function () {
+    iconv = new Iconv(defaultIconv.backend)
+    iconv.enableStreamingAPI(stream)
+  })
   it("calls handler for unencodable chars", function () {
     var calls = []
     var res = iconv.encode("A世B", "latin1", {
@@ -11,7 +18,7 @@ describe("invalidCharHandler (SBCS)", function () {
       }
     })
 
-    assert.strictEqual(res.toString("binary"), "A?B")
+    assert.strictEqual(Buffer.from(res).toString("binary"), "A?B")
     assert.strictEqual(calls.length, 1)
     assert.strictEqual(calls[0].char, "世")
     assert.strictEqual(calls[0].index, 1)
@@ -26,33 +33,43 @@ describe("invalidCharHandler (SBCS)", function () {
     })
 
     assert.strictEqual(called, false)
-    assert.strictEqual(res.toString("binary"), "?A")
+    assert.strictEqual(Buffer.from(res).toString("binary"), "?A")
+  })
+
+  it("reports U+FFFD when the replacement byte is unassigned", function () {
+    iconv.defaultCharSingleByte = "\x81"
+    const calls = []
+    const result = iconv.encode("�A?", "windows1252", {
+      invalidCharHandler (char, index) {
+        calls.push({ char, index })
+      }
+    })
+
+    assert.deepStrictEqual(Array.from(result), [0x81, 0x41, 0x3F])
+    assert.deepStrictEqual(calls, [{ char: "�", index: 0 }])
+    assert.strictEqual(iconv.encode("�", "windows1252", {
+      invalidCharHandler () { return true }
+    }), null)
+  })
+
+  it("allows the valid character at the configured replacement byte", function () {
+    iconv.defaultCharSingleByte = "\x80"
+    const calls = []
+    const result = iconv.encode("€世", "windows1252", {
+      invalidCharHandler (char, index) {
+        calls.push({ char, index })
+      }
+    })
+
+    assert.deepStrictEqual(Array.from(result), [0x80, 0x80])
+    assert.deepStrictEqual(calls, [{ char: "世", index: 1 }])
   })
 
   it("rejects a non-single-byte defaultCharSingleByte for SBCS", function () {
-    var encoding = "iso88591"
-    var originalDefaultCharSingleByte = iconv.defaultCharSingleByte
-    var codecKey = canonicalizeEncoding(encoding)
-    var cachedCodec = iconv._codecDataCache[codecKey]
-    delete iconv._codecDataCache[codecKey]
-
-    try {
-      iconv.defaultCharSingleByte = "�"
-      assert.throws(function () {
-        iconv.getCodec(encoding)
-      }, function (err) {
-        assert.strictEqual(err.name, "TypeError")
-        assert.strictEqual(err.message, "defaultCharSingleByte must be a single-byte character")
-        return true
-      })
-    } finally {
-      iconv.defaultCharSingleByte = originalDefaultCharSingleByte
-      if (cachedCodec) {
-        iconv._codecDataCache[codecKey] = cachedCodec
-      } else {
-        delete iconv._codecDataCache[codecKey]
-      }
-    }
+    iconv.defaultCharSingleByte = "�"
+    assert.throws(function () {
+      iconv.getCodec("iso88591")
+    }, { name: "TypeError", message: "defaultCharSingleByte must be a single-byte character" })
   })
 
   it("propagates thrown errors", function () {
@@ -103,7 +120,7 @@ describe("invalidCharHandler (SBCS)", function () {
       }
     })
 
-    assert.strictEqual(res.toString("binary"), "A???B")
+    assert.strictEqual(Buffer.from(res).toString("binary"), "A???B")
     assert.strictEqual(calls.length, 2)
     assert.strictEqual(calls[0].char, "🙂")
     assert.strictEqual(calls[0].index, 1)
@@ -185,7 +202,7 @@ describe("invalidCharHandler (SBCS)", function () {
       }
     })
 
-    assert.strictEqual(res.toString("binary"), "?")
+    assert.strictEqual(Buffer.from(res).toString("binary"), "?")
   })
 
   it("keeps default replacement when handler returns nothing", function () {
@@ -194,6 +211,6 @@ describe("invalidCharHandler (SBCS)", function () {
       }
     })
 
-    assert.strictEqual(res.toString("binary"), "?")
+    assert.strictEqual(Buffer.from(res).toString("binary"), "?")
   })
 })

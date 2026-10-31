@@ -84,7 +84,7 @@ class SBCSEncoder {
 
         // `encodeBuf` uses the default byte for unmappable chars. Allow the
         // codec character that genuinely maps to that byte.
-        if (encodedByte !== defaultCharByte || charCode === defaultCharCode) {
+        if (encodedByte !== defaultCharByte || (charCode === defaultCharCode && charCode !== 0xFFFD)) {
           bytes[i] = encodedByte
           codePointIndex++
           continue
