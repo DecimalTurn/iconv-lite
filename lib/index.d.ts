@@ -32,19 +32,24 @@ export interface EncodeOptions {
   defaultEncoding?: "utf32be";
   /**
    * Called when encoding a character that cannot be represented in the target encoding.
-   * Return `true` to stop encoding early and make `iconv.encode()` return `null`.
+   * Return `true` to discard the current write (or buffered end output) and return `null`.
+   * Later writes may still succeed. A cancellation also makes `iconv.encode()` return `null`.
+   * Return `false` or nothing to keep the default replacement bytes.
+   * Thrown errors propagate to the caller or become errors on `encodeStream()`.
    *
    * Currently used by single-byte encoders only.
+   * A trailing high surrogate is buffered until the next nonempty write or `end()`.
    *
    * @param char - The unencodable character.
    * @param index - The zero-based code-point position in the write where the character starts.
-   * A trailing high surrogate is buffered until the next nonempty write or `end()`.
    */
   invalidCharHandler?: (char: string, index: number) => boolean | void;
 }
 
 export interface EncoderStream<Bytes extends Uint8Array = Buffer, CanCancel extends boolean = boolean> {
+  /** Encodes a chunk. A cancelling handler discards this write's output and returns `null`. */
   write(str: string): CanCancel extends true ? Bytes | null : Bytes;
+  /** Flushes buffered characters. A cancelling handler may return `null` here too. */
   end(): (CanCancel extends true ? Bytes | null : Bytes) | undefined;
 }
 

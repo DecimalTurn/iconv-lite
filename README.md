@@ -40,20 +40,24 @@ const str = iconv.decode(Buffer.from([0x68, 0x65, 0x6c, 0x6c, 0x6f]), 'win1251')
 const buf = iconv.encode("Sample input string", 'win1251');
 
 // Customize handling in case some characters are not representable in the target encoding
-buf = iconv.encode("Hello 世界", 'latin1', {
-    invalidCharHandler: function(char, index) {
-        throw new Error("Cannot encode character " + char + " at index " + index);
-    }
-});
+try {
+    iconv.encode("Hello 世界", 'latin1', {
+        invalidCharHandler: function(char, index) {
+            throw new Error("Cannot encode character " + char + " at index " + index);
+        }
+    });
+} catch (error) {
+    console.warn(error.message);
+}
 
 // Stop after first unsupported character (useful to avoid repeated warnings)
-buf = iconv.encode("Hello 世界", 'latin1', {
+const checkedBuf = iconv.encode("Hello 世界", 'latin1', {
     invalidCharHandler: function(char, index) {
         console.warn("Unsupported character " + char + " at index " + index);
         return true;
     }
 });
-// => null
+// checkedBuf === null
 
 // Check if encoding is supported
 iconv.encodingExists("us-ascii")
@@ -102,6 +106,20 @@ http.createServer(function(req, res) {
     });
 });
 ```
+
+For SBCS encoders, returning `true` from `invalidCharHandler` discards the entire
+current `write()`, including its valid prefix, and returns `null`. Later writes
+can still succeed. In `encodeStream()`, this drops the current chunk without
+ending the stream; throw from the handler to signal a stream error instead.
+Returning `false` or nothing keeps the default replacement bytes.
+
+With a handler, a trailing high surrogate is buffered until the next nonempty
+write or `end()`, so a split surrogate pair is reported as one character. The
+callback index counts Unicode code points within the input of the write where
+the character starts. A buffered character retains its index from that write.
+When using `getEncoder()`, consume the bytes returned by `end()` too; it can
+return `null` if the handler cancels the buffered character. A cancellation
+during either `write()` or `end()` makes the one-shot `encode()` return `null`.
 
 ## Supported encodings
 
