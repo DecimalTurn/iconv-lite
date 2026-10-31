@@ -43,9 +43,9 @@ export interface EncodeOptions {
   invalidCharHandler?: (char: string, index: number) => boolean | void;
 }
 
-export interface EncoderStream<Bytes extends Uint8Array = Buffer> {
-  write(str: string): Bytes | null;
-  end(): Bytes | null | undefined;
+export interface EncoderStream<Bytes extends Uint8Array = Buffer, CanCancel extends boolean = boolean> {
+  write(str: string): CanCancel extends true ? Bytes | null : Bytes;
+  end(): (CanCancel extends true ? Bytes | null : Bytes) | undefined;
 }
 
 export interface DecoderStream {
@@ -73,6 +73,7 @@ export interface Backend<Bytes extends Uint8Array = Uint8Array> {
 
 export interface Iconv<Bytes extends Uint8Array = Buffer> {
   /** Encodes a `string` into backend bytes, using the provided `encoding`. */
+  encode (content: string, encoding: Encoding, options?: EncodeOptions & { invalidCharHandler?: undefined }): Bytes
   encode (content: string, encoding: Encoding, options?: EncodeOptions): Bytes | null
 
   /** Decodes a `Buffer` into a `string`, using the provided `encoding`. */
@@ -103,6 +104,7 @@ export interface Iconv<Bytes extends Uint8Array = Buffer> {
   enableStreamingAPI (stream_module: { Transform: typeof Stream.Transform }): void
 
   /** Creates and returns a low-level encoder stream. */
+  getEncoder (encoding: Encoding, options?: EncodeOptions & { invalidCharHandler?: undefined }): EncoderStream<Bytes, false>
   getEncoder (encoding: Encoding, options?: EncodeOptions): EncoderStream<Bytes>
 
   /** Creates and returns a low-level decoder stream. */
