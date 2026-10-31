@@ -1,3 +1,5 @@
+import { EncodingHandler, EncodingBuffer } from "../lib/encoding-handler.js"
+
 // Single-byte codec. Needs a 'chars' string parameter that contains 256 or 128 chars that
 // correspond to encoded bytes (if 128 - then lower half is ASCII).
 
@@ -47,6 +49,7 @@ export const _sbcs = class SBCSCodec {
       encodeBuf[code] = i
     }
 
+    this.encodingName = codecOptions.encodingName
     this.encodeBuf = encodeBuf
     this.defaultCharByte = defaultCharByte
     this.defaultCharCode = codecOptions.chars.charCodeAt(defaultCharByte)
@@ -57,19 +60,20 @@ export const _sbcs = class SBCSCodec {
 }
 
 class SBCSEncoder {
-  #pendingHighSurrogate = ""
-  #pendingHighSurrogateIndex = 0
+  #handler
 
   constructor (opts, codec, backend) {
     this.backend = backend
     this.encodeBuf = codec.encodeBuf
-    this.invalidCharHandler = opts && opts.invalidCharHandler
+    if (typeof opts?.invalidCharHandler === "function") {
+      this.#handler = new EncodingHandler(opts.invalidCharHandler, codec.encodingName)
+    }
     this.defaultCharByte = codec.defaultCharByte
     this.defaultCharCode = codec.defaultCharCode
   }
 
   write (str) {
-    if (typeof this.invalidCharHandler !== "function") {
+    if (!this.#handler) {
       const bytes = this.backend.allocBytes(str.length)
       const encodeBuf = this.encodeBuf
       for (let i = 0; i < str.length; i++) {
@@ -81,71 +85,44 @@ class SBCSEncoder {
     return this.#writeWithHandler(str, false)
   }
 
+  #isRepresentable (char) {
+    const code = char.charCodeAt(0)
+    return char.length === 1 && code !== 0xFFFD &&
+      (this.encodeBuf[code] !== this.defaultCharByte || code === this.defaultCharCode)
+  }
+
   #writeWithHandler (str, final) {
-    // Empty writes do not finalize a character buffered from the previous chunk.
-    if (str.length === 0 && !final) {
-      return this.backend.bytesToResult(this.backend.allocBytes(0), 0)
-    }
-
-    const pending = this.#pendingHighSurrogate
-    const pendingIndex = this.#pendingHighSurrogateIndex
-    this.#pendingHighSurrogate = ""
-    if (pending) str = pending + str
-
-    const bytes = this.backend.allocBytes(str.length)
-    const encodeBuf = this.encodeBuf
-    const invalidCharHandler = this.invalidCharHandler
-    const defaultCharByte = this.defaultCharByte
-    const defaultCharCode = this.defaultCharCode
-    let codePointIndex = 0
-    let written = str.length
-
-    for (let i = 0; i < str.length; i++) {
-      const fromPreviousWrite = pending.length > 0 && i === 0
-      const index = fromPreviousWrite ? pendingIndex : codePointIndex
-      const charCode = str.charCodeAt(i)
-      const encodedByte = encodeBuf[charCode]
-
-      // U+FFFD marks unassigned bytes; it is never a valid character at the fallback byte.
-      if (encodedByte !== defaultCharByte || (charCode === defaultCharCode && charCode !== 0xFFFD)) {
-        bytes[i] = encodedByte
-        if (!fromPreviousWrite) codePointIndex++
-        continue
-      }
-
-      if (charCode >= 0xD800 && charCode <= 0xDBFF) {
-        if (i + 1 === str.length && !final) {
-          this.#pendingHighSurrogate = str.charAt(i)
-          this.#pendingHighSurrogateIndex = index
-          written = i
-          break
-        }
-
-        const nextCharCode = str.charCodeAt(i + 1)
-        if (nextCharCode >= 0xDC00 && nextCharCode <= 0xDFFF) {
-          if (invalidCharHandler(str.slice(i, i + 2), index) === true) {
-            return null
-          }
-          bytes[i] = encodedByte
-          bytes[i + 1] = encodeBuf[nextCharCode]
-          i++
-          codePointIndex++
+    const output = new EncodingBuffer(this.backend, str.length)
+    try {
+      for (const { char, index } of this.#handler.read(str, final)) {
+        if (this.#isRepresentable(char)) {
+          output.writeByte(this.encodeBuf[char.charCodeAt(0)])
           continue
         }
+        const replacement = this.#handler.resolve(char, index)
+        if (replacement === null) {
+          this.#handler.clear()
+          return null
+        }
+        if (replacement === undefined) {
+          // Preserve the existing fallback: one byte per UTF-16 code unit.
+          for (let i = 0; i < char.length; i++) output.writeByte(this.defaultCharByte)
+        } else {
+          for (const replacementChar of replacement) {
+            if (!this.#isRepresentable(replacementChar)) throw this.#handler.replacementError(replacementChar, index)
+            output.writeByte(this.encodeBuf[replacementChar.charCodeAt(0)])
+          }
+        }
       }
-
-      if (invalidCharHandler(str.charAt(i), index) === true) {
-        return null
-      }
-      bytes[i] = encodedByte
-      if (!fromPreviousWrite) codePointIndex++
+      return output.finish()
+    } catch (error) {
+      this.#handler.clear()
+      throw error
     }
-
-    return this.backend.bytesToResult(bytes, written)
   }
 
   end () {
-    if (this.#pendingHighSurrogate) return this.#writeWithHandler("", true)
+    if (this.#handler?.hasPending) return this.#writeWithHandler("", true)
   }
 }
 

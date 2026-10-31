@@ -85,3 +85,5 @@ expectTypeOf(webEncode("世", "latin1", {
 })).toEqualTypeOf<Uint8Array | null>()
 webIconv.setBackend(webBackend)
 webIconv.defaultCharUnicode = "?"
+
+expectTypeOf(encode("🙂", "latin1", { invalidCharHandler: () => ":)" })).toEqualTypeOf<Buffer | null>()

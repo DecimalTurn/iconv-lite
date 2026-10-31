@@ -34,6 +34,8 @@ export interface EncodeOptions {
    * Called when encoding a character that cannot be represented in the target encoding.
    * Return `true` to discard the current write (or buffered end output) and return `null`.
    * Later writes may still succeed. A cancellation also makes `iconv.encode()` return `null`.
+   * Return a string to encode it instead (an empty string omits the character).
+   * An unencodable replacement throws without invoking the handler recursively.
    * Return `false` or nothing to keep the default replacement bytes.
    * Thrown errors propagate to the caller or become errors on `encodeStream()`.
    *
@@ -43,7 +45,7 @@ export interface EncodeOptions {
    * @param char - The unencodable character.
    * @param index - The zero-based code-point position in the write where the character starts.
    */
-  invalidCharHandler?: (char: string, index: number) => boolean | void;
+  invalidCharHandler?: (char: string, index: number) => string | boolean | void;
 }
 
 export interface EncoderStream<Bytes extends Uint8Array = Buffer, CanCancel extends boolean = boolean> {

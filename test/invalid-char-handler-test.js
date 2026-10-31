@@ -325,14 +325,46 @@ describe("invalidCharHandler (SBCS) #node-web", function () {
     stream.end("B")
   })
 
-  it("keeps default replacement when handler returns a value", function () {
+  it("encodes the replacement returned by the handler", function () {
     var res = iconv.encode("世", "latin1", {
       invalidCharHandler: function () {
         return "!"
       }
     })
 
-    assert.strictEqual(Buffer.from(res).toString("binary"), "?")
+    assert.strictEqual(Buffer.from(res).toString("binary"), "!")
+  })
+
+  it("supports expanding and empty replacements without changing source indices", function () {
+    const calls = []
+    const result = iconv.encode("A🙂世B界", "latin1", {
+      invalidCharHandler (char, index) {
+        calls.push([char, index])
+        return char === "🙂" ? ":)".repeat(100) : ""
+      }
+    })
+    assert.strictEqual(Buffer.from(result).toString("latin1"), "A" + ":)".repeat(100) + "B")
+    assert.deepStrictEqual(calls, [["🙂", 1], ["世", 2], ["界", 4]])
+  })
+
+  it("rejects unencodable replacements without recursive callbacks", function () {
+    let calls = 0
+    assert.throws(() => iconv.encode("世", "latin1", {
+      invalidCharHandler () { calls++; return "🙂" }
+    }), /Replacement .* cannot be encoded/)
+    assert.strictEqual(calls, 1)
+  })
+
+  it("replaces split pairs and pending characters at end", function () {
+    const encoder = iconv.getEncoder("latin1", { invalidCharHandler: () => ":)" })
+    assert.strictEqual(Buffer.from(encoder.write("A\uD83D")).toString(), "A")
+    assert.strictEqual(Buffer.from(encoder.write("\uDE42\uD800")).toString(), ":)")
+    assert.strictEqual(Buffer.from(encoder.end()).toString(), ":)")
+    assert.strictEqual(encoder.end(), undefined)
+  })
+
+  it("rejects invalid callback return types", function () {
+    assert.throws(() => iconv.encode("世", "latin1", { invalidCharHandler: () => 42 }), /must return/)
   })
 
   it("keeps default replacement when handler returns nothing", function () {
