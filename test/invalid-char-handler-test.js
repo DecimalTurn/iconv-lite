@@ -1,6 +1,6 @@
-var assert = require("assert")
-var join = require("path").join
-var iconv = require(join(__dirname, "/../"))
+import assert from "assert"
+import iconv from "../lib/index-node.js"
+import { canonicalizeEncoding } from "../lib/utils.js"
 
 describe("invalidCharHandler (SBCS)", function () {
   it("calls handler for unencodable chars", function () {
@@ -32,7 +32,7 @@ describe("invalidCharHandler (SBCS)", function () {
   it("rejects a non-single-byte defaultCharSingleByte for SBCS", function () {
     var encoding = "iso88591"
     var originalDefaultCharSingleByte = iconv.defaultCharSingleByte
-    var codecKey = iconv._canonicalizeEncoding(encoding)
+    var codecKey = canonicalizeEncoding(encoding)
     var cachedCodec = iconv._codecDataCache[codecKey]
     delete iconv._codecDataCache[codecKey]
 
